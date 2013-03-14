@@ -1,10 +1,24 @@
-#process a tab or comma separated list of fields into form fields
-#order of fields should be:
-#field name,field type,label,order
+#process a yaml-like file with form and field info
+#field info should be in csv format
+#file should be structured like:
 #
+#---
+#id: id
+#subject: subject
+#sender: name,email [only 1]
+#receiver: name,email [separate multiple with ;]
+#---
+#field name,field type,label,required[t/f],order
+#
+#can render form as html and generate json config file
+#
+import json
+
 class Form:
-    def __init__(self, name):
-        self.id = name
+    def __init__(self):
+        self.id = ''
+        self.subject = ''
+        self.recipients = []
         self.fields = []
 
     def make_template(self):
@@ -24,6 +38,42 @@ class Form:
         else:
             print 'this field already exists!'
 
+    def add_sender(self, sname, semail):
+        self.sender = Sender(sname, semail)
+
+    def process_sender(self, line):
+        pieces = line.split(',')
+        print pieces
+        name = pieces[0]
+        email = pieces[1]
+
+        self.add_sender(name, email)
+        print self.sender
+
+    def get_sender_dict(self):
+        s = self.sender
+        return s.to_dict()
+
+    def add_recipient(self, rname, remail):
+        self.recipients.append(Recipient(rname, remail))
+
+    def process_recipients(self, line):
+        pieces = line.split(';')
+
+        for p in pieces:
+            temp_piece = p.split(',')
+            name = temp_piece[0]
+            email = temp_piece[1]
+            self.add_recipient(name, email)
+
+    def get_recipients_dict(self):
+        recipients = self.recipients
+        rs = []
+        for r in recipients:
+            rs.append(r.to_dict())
+
+        return rs
+
     def get_field(self, fname):
         f = self.get_fields()
         return f[fname]
@@ -37,10 +87,21 @@ class Form:
         fh.close
 
         for line in lines:
-            l = line.split(sep)
-            self.add_field(l[0], l[1], l[2], bool(l[3]), int(l[4].strip()))
+            line = line.strip()
+            if line != '---':
+                if 'id:' in line:
+                    self.id = line[len('id:'):].strip()
+                elif 'subject:' in line:
+                    self.subject = line[len('subject:'):].strip()
+                elif 'sender:' in line:
+                    self.process_sender(line[len('sender:'):].strip())
+                elif 'recipients' in line:
+                    self.process_recipients(line[len('recipients:'):].strip())
+                else:
+                    l = line.split(sep)
+                    self.add_field(l[0], l[1], l[2], bool(l[3]), int(l[4].strip()))
 
-        print 'fields added!'
+        print 'file processed!'
 
     def print_fields(self):
         fields = self.get_fields()
@@ -64,7 +125,32 @@ class Form:
         fh.close
 
         print 'fields exported!'
-        
+
+    def get_fields_dict(self):
+        fields = self.get_fields()
+        fs = {}
+
+        for i in range(0, len(fields)):
+            fs[fields[i].name] = fields[i].required
+
+        return fs
+
+    def create_config(self):
+        self.config = {}
+        self.config['id'] = self.id
+        self.config['subject'] = self.subject
+        self.config['sender'] = self.get_sender_dict()
+        self.config['recipients'] = self.get_recipients_dict()
+        self.config['fields'] = self.get_fields_dict()
+
+    def config_to_json(self):
+        return json.dumps(self.config, indent=4)
+
+    def export_config(self):
+        fh = open(self.dir + 'config.json', 'w')
+        json.dump(self.config, fh, indent=4)
+        fh.close
+        print 'config exported!'
 
 class Field:
     def __init__(self, fname, ftype, flabel, frequired, forder):
@@ -130,3 +216,37 @@ class Field:
         label = label + '\n</div>'
 
         return label
+
+    def to_dict(self):
+        return {self.name : self.required}
+
+class Sender:
+    def __init__(self, name, email):
+        self.name = name
+        self.email = email
+
+    def get_name(self):
+        return self.name
+
+    def get_email(self):
+        return self.email
+
+    def to_dict(self):
+        d = {'name': self.name, 'email': self.email}
+        return d
+
+class Recipient:
+    def __init__(self, name, email):
+        self.name = name
+        self.email = email
+
+    def get_name(self):
+        return self.name
+
+    def get_email(self):
+        return self.email
+
+    def to_dict(self):
+        d = {'name': self.name, 'email': self.email}
+        return d
+        
